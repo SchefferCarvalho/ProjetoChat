@@ -1,7 +1,6 @@
 package ProjetoChat;
 
 import java.io.BufferedReader;
-import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.ServerSocket;
@@ -11,23 +10,26 @@ import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JTextField;
 import java.io.PrintStream;
-import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Vector;
+import java.util.Map;
 
+//import java.util.Vector;
 public class Servidor extends Thread {
 
-    private static ArrayList<BufferedWriter> clientes;
+    //private static ArrayList<BufferedWriter> clientes;
     private static ServerSocket server;
 
     // Parte que controla as conexões por meio de threads.
-    private static Vector CLIENTES;
+    private static Map<String, PrintStream> MAP_CLIENTES;
     // socket deste cliente
     private Socket conexao;
     // nome deste cliente
     private String nomeCliente;
     // lista que armazena nome de CLIENTES
     private static List LISTA_DE_NOMES = new ArrayList();
+
+    private PrintStream saida;
 
     // construtor que recebe o socket deste cliente
     public Servidor(Socket socket) {
@@ -57,8 +59,8 @@ public class Servidor extends Thread {
     }
 
     public static void main(String args[]) {
-        // instancia o vetor de CLIENTES conectados
-        CLIENTES = new Vector();
+        // instancia MAP_CLIENTES conectados
+        MAP_CLIENTES = new HashMap();
         try {
             //Cria os objetos necessário para instânciar o servidor
             JLabel lblMessage = new JLabel("Porta do Servidor:");
@@ -66,7 +68,7 @@ public class Servidor extends Thread {
             Object[] texts = {lblMessage, txtPorta};
             JOptionPane.showMessageDialog(null, texts);
             server = new ServerSocket(Integer.parseInt(txtPorta.getText()));
-            clientes = new ArrayList<BufferedWriter>();
+            //clientes = new ArrayList<BufferedWriter>();
             JOptionPane.showMessageDialog(null, "Servidor ativo na porta: " + txtPorta.getText());
             System.out.println("Servidor ativo na porta - " + txtPorta.getText());
             // Loop principal.     
@@ -84,6 +86,7 @@ public class Servidor extends Thread {
 
         } catch (IOException e) {
             // caso ocorra alguma excessão de E/S, mostre qual foi.
+            System.out.println(" AQUI");
             System.out.println("IOException: " + e);
         }
     }
@@ -92,77 +95,85 @@ public class Servidor extends Thread {
     public void run() {
         try {
             // objetos que permitem controlar fluxo de comunicação que vem do cliente
-            BufferedReader entrada
-                    = new BufferedReader(new InputStreamReader(this.conexao.getInputStream()));
-
-            PrintStream saida = new PrintStream(this.conexao.getOutputStream());
+            BufferedReader entrada = new BufferedReader(new InputStreamReader(this.conexao.getInputStream()));
+            saida = new PrintStream(this.conexao.getOutputStream());
             // recebe o nome do cliente
             this.nomeCliente = entrada.readLine();
             //chamada ao metodo que testa nomes iguais
             if (armazena(this.nomeCliente)) {
                 saida.println("Este nome ja existe! Conecte novamente com outro Nome.");
-                CLIENTES.add(saida);
+                //CLIENTES.add(saida);
                 //fecha a conexao com este cliente
                 this.conexao.close();
                 return;
             } else {
                 //mostra o nome do cliente conectado ao servidor
                 System.out.println(this.nomeCliente + " - Conectado");
+                //Quando o cliente se conectar recebe todos que estão conectados
+                saida.println("Conectados: " + LISTA_DE_NOMES.toString());
             }
             //igual a null encerra a execução
             if (this.nomeCliente == null) {
                 return;
             }
-            //adiciona os dados de saida do cliente no objeto CLIENTES
-            CLIENTES.add(saida);
-            //recebe a mensagem do cliente
-            String msg = entrada.readLine();
+            //adiciona os dados de saida do cliente no objeto MAP_CLIENTES
+            //A chave será o nome e valor o printstream
+            MAP_CLIENTES.put(this.nomeCliente, saida);
+            String[] msg = entrada.readLine().split("/");
             // Verificar se linha é null (conexão encerrada)
             // Se não for nula, mostra a troca de mensagens entre os CLIENTES
-            while (msg != null && !(msg.trim().equals(""))) {
-                System.out.println(this.nomeCliente + " - " + msg);
+            while (msg != null) {
+                System.out.println(this.nomeCliente + " - " + msg[0]);
                 // reenvia a linha para todos os CLIENTES conectados
-                sendToAll(saida, " - ", msg);
+                send(saida, " - ", msg);
                 // espera por uma nova linha.
-                msg = entrada.readLine();
+                msg = entrada.readLine().split("/");
             }
-            //se cliente enviar linha em branco, mostra a saida no servidor
             System.out.println(this.nomeCliente + " - Desconectado");
             // mensagem de saida do chat aos CLIENTES conectados
-            sendToAll(saida, " - ", "Desconectado");
+            String[] out = {"Desconectado"};
+            send(saida, " - ", out);
             //remove nome da lista
             remove(this.nomeCliente);
             //exclui atributos setados ao cliente
-            CLIENTES.remove(saida);
+            MAP_CLIENTES.remove(this.nomeCliente);
             //fecha a conexao com este cliente
             this.conexao.close();
-        } catch (IOException e) {
-            // Caso ocorra alguma excessão de E/S, mostre qual foi.
-            //System.out.println("Falha na Conexao... .. ." + " IOException: " + e);
+        } catch (Exception e) {
             //se cliente enviar linha em branco, mostra a saida no servidor
             System.out.println(this.nomeCliente + " - Desconectado");
             // mensagem de saida do chat aos CLIENTES conectados
-            Enumeration en = CLIENTES.elements();
-            while (en.hasMoreElements()) {
-                // obtém o fluxo de saída de um dos CLIENTES
-                PrintStream chat = (PrintStream) en.nextElement();
-                // envia para todos, menos para o próprio usuário
-                chat.println(this.nomeCliente + "- Desconectado");
+            for (Map.Entry cliente : MAP_CLIENTES.entrySet()) {
+                PrintStream chat = (PrintStream) cliente.getValue();
+                if (chat != saida) {
+                    chat.println(" " + this.nomeCliente + " - Desconectado");
+                }
             }
             //remove nome da lista
             remove(this.nomeCliente);
+            //exclui atributos setados ao cliente
+            MAP_CLIENTES.remove(this.nomeCliente);
         }
     }
 
-    // enviar uma mensagem para todos, menos para o próprio
-    public void sendToAll(PrintStream saida, String acao, String msg) throws IOException {
-        Enumeration e = CLIENTES.elements();
-        while (e.hasMoreElements()) {
-            // obtém o fluxo de saída de um dos CLIENTES
-            PrintStream chat = (PrintStream) e.nextElement();
-            // envia para todos, menos para o próprio usuário
+    /**
+     * Se o array da msg tiver tamanho igual a 1, então envia para todos Se o
+     * tamanho for 2, envia apenas para o cliente escolhido
+     */
+    public void send(PrintStream saida, String acao, String[] msg) throws IOException {
+        out:
+        for (Map.Entry cliente : MAP_CLIENTES.entrySet()) {
+            PrintStream chat = (PrintStream) cliente.getValue();
             if (chat != saida) {
-                chat.println(this.nomeCliente + acao + msg);
+
+                if (msg.length == 1) {
+                    chat.println(" " + this.nomeCliente + acao + msg[0]);
+                } else {
+                    if (msg[1].equalsIgnoreCase((String) cliente.getKey())) {
+                        chat.println(" " + this.nomeCliente + acao + msg[0]);
+                        break out;
+                    }
+                }
             }
         }
     }
