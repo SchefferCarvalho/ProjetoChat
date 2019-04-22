@@ -102,7 +102,6 @@ public class Servidor extends Thread {
             //chamada ao metodo que testa nomes iguais
             if (armazena(this.nomeCliente)) {
                 saida.println("Este nome ja existe! Conecte novamente com outro Nome.");
-                //CLIENTES.add(saida);
                 //fecha a conexao com este cliente
                 this.conexao.close();
                 return;
